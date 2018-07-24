@@ -1,0 +1,287 @@
+Red Wine quality assessment
+Data analytics
+03/15/2018
+Submitted by Vikas Warudkar
+========================================================
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+require(ggplot2)
+require(MASS)
+require(gridExtra)
+require(dplyr)
+require(memisc)
+require(GGally)
+require(reshape2)
+require(kernlab)
+update.packages("ggplot2")
+library(plyr)
+
+```
+
+Read csv file and explore statistics
+```{r echo=FALSE,message=FALSE,warning=FALSE}
+Wine <- read.csv('wineQualityReds.csv')
+str(Wine) 
+summary(Wine)
+Wine$quality <- as.numeric(Wine$quality)
+
+```
+
+Creates tabular results of categorical variables
+
+```{r,message=FALSE,warning=FALSE}
+table(Wine$quality)
+
+```
+
+
+# Univariate Plots Section
+
+```{r echo=FALSE,message=FALSE,warning=FALSE}
+grid.arrange(qplot(Wine$fixed.acidity),
+             qplot(Wine$volatile.acidity),
+             qplot(Wine$citric.acid),
+             qplot(Wine$residual.sugar),
+             qplot(Wine$chlorides),
+             qplot(Wine$free.sulfur.dioxide),
+             qplot(Wine$total.sulfur.dioxide),
+             qplot(Wine$density),
+             qplot(Wine$pH),
+             qplot(Wine$sulphates),
+             qplot(Wine$alcohol),
+             qplot(Wine$quality),
+             ncol = 4)
+
+```
+
+# Univariate Analysis
+
+1. Wine Quality forms a normal distribution.
+
+2. Density and pH are normally distributed with a few outliers.
+
+Create new variable for better exploration
+```{r,message=FALSE,warning=FALSE}
+Wine$rating <- ifelse(Wine$quality < 5, 'bad', ifelse(
+  Wine$quality < 7, 'average', 'good'))
+Wine$rating <- ordered(Wine$rating,
+                     levels = c('bad', 'average', 'good'))
+summary(Wine$rating)
+```
+
+
+Create Histogram of log function of the variables for further analysis
+```{r,message=FALSE,warning=FALSE}
+ggplot(Wine,aes(x=fixed.acidity))+geom_histogram(fill='red')+scale_x_log10(breaks=4:15)+
+  xlab('Fixed Acidity')+ylab('Count')+ggtitle('Histogram of Fixed Acidity Values')
+require(plotly)
+help(package='plotly')
+ggplot()
+plot_ly(data=Wine,x=~citric.acid,type='histogram')
+
+ggplot(Wine) + geom_histogram(aes(x=volatile.acidity),fill='blue')+
+  scale_x_log10(breaks=seq(0.1,1,0.1))
+
+ggplot(Wine) + 
+  geom_histogram(aes(x=citric.acid),fill='green') +
+  scale_x_log10()
+```
+
+Citric acid was one feature that was found to be not 
+normally distributed on a logarithmic scale. 
+
+
+Create a combined variable, 
+TAC.acidity, containing the sum of tartaric, acetic, and citric acid.
+
+```{r,message=FALSE,warning=FALSE}
+Wine$TAC.acidity <- Wine$fixed.acidity + Wine$volatile.acidity + 
+Wine$citric.acid
+
+qplot(Wine$TAC.acidity,main = 'Histogram of TAC Acidity (fixed+volatile+Citric)')
+
+```
+
+## Boxplots are better suited in visualizing the outliers.
+
+```{r,message=FALSE,warning=FALSE}
+get_simple_boxplot <- function(column, ylab) {
+  return(qplot(data = Wine, x = 'simple',
+               y = column, geom = 'boxplot',
+               xlab = '',
+               ylab = ylab))
+}
+
+grid.arrange(get_simple_boxplot(Wine$fixed.acidity, 'fixed acidity'),
+             get_simple_boxplot(Wine$volatile.acidity, 'volatile acidity'),
+             get_simple_boxplot(Wine$citric.acid, 'citric acid'),
+             get_simple_boxplot(Wine$TAC.acidity, 'TAC acidity'),
+             get_simple_boxplot(Wine$residual.sugar, 'residual sugar'),
+             get_simple_boxplot(Wine$chlorides, 'chlorides'),
+             get_simple_boxplot(Wine$free.sulfur.dioxide, 'free sulf. dioxide'),
+             get_simple_boxplot(Wine$total.sulfur.dioxide, 'total sulf. dioxide'),
+             get_simple_boxplot(Wine$density, 'density'),
+             get_simple_boxplot(Wine$pH, 'pH'),
+             get_simple_boxplot(Wine$sulphates, 'sulphates'),
+             get_simple_boxplot(Wine$alcohol, 'alcohol'),
+             ncol = 4)
+
+plot_ly(Wine,y=~alcohol,type='box')
+
+```
+
+# Bivariate Plots Section
+
+```{r echo=FALSE,message=FALSE,warning=FALSE}
+
+get_bivariate_boxplot <- function(x, y, ylab) {
+  return(qplot(data = Wine, x = x, y = y, geom = 'boxplot', ylab = ylab))
+}
+
+grid.arrange(get_bivariate_boxplot(Wine$quality, Wine$fixed.acidity,
+                                   'fixed acidity'),
+             get_bivariate_boxplot(Wine$quality, Wine$volatile.acidity,
+                                   'volatile acidity'),
+             get_bivariate_boxplot(Wine$quality, Wine$citric.acid,
+                                   'citric acid'),
+             get_bivariate_boxplot(Wine$quality, Wine$TAC.acidity,
+                                   'TAC acidity'),
+             get_bivariate_boxplot(Wine$quality, log10(Wine$residual.sugar),
+                                   'residual sugar'),
+             get_bivariate_boxplot(Wine$quality, log10(Wine$chlorides),
+                                   'chlorides'),
+             get_bivariate_boxplot(Wine$quality, Wine$free.sulfur.dioxide,
+                                   'free sulf. dioxide'),
+             get_bivariate_boxplot(Wine$quality, Wine$total.sulfur.dioxide,
+                                   'total sulf. dioxide'),
+             get_bivariate_boxplot(Wine$quality, Wine$density,
+                                   'density'),
+             get_bivariate_boxplot(Wine$quality, Wine$pH,
+                                   'pH'),
+             get_bivariate_boxplot(Wine$quality, log10(Wine$sulphates),
+                                   'sulphates'),
+             get_bivariate_boxplot(Wine$quality, Wine$alcohol,
+                                   'alcohol'),
+             ncol = 4)
+
+
+```
+
+Correlation for each of these
+variables against quality:
+
+```{r,message=FALSE,warning=FALSE}
+simple_cor_test <- function(x, y) {
+  return(cor.test(x, as.numeric(y))$estimate)
+}
+
+correlations <- c(
+  simple_cor_test(Wine$fixed.acidity, Wine$quality),
+  simple_cor_test(Wine$volatile.acidity, Wine$quality),
+  simple_cor_test(Wine$citric.acid, Wine$quality),
+  simple_cor_test(Wine$TAC.acidity, Wine$quality),
+  simple_cor_test(log10(Wine$residual.sugar), Wine$quality),
+  simple_cor_test(log10(Wine$chlorides), Wine$quality),
+  simple_cor_test(Wine$free.sulfur.dioxide, Wine$quality),
+  simple_cor_test(Wine$total.sulfur.dioxide, Wine$quality),
+  simple_cor_test(Wine$density, Wine$quality),
+  simple_cor_test(Wine$pH, Wine$quality),
+  simple_cor_test(log10(Wine$sulphates), Wine$quality),
+  simple_cor_test(Wine$alcohol, Wine$quality))
+
+correlations
+
+names(correlations) <- c('fixed.acidity', 'volatile.acidity', 'citric.acid',
+                         'TAC.acidity', 'log10.residual.sugar',
+                         'log10.chlordies', 'free.sulfur.dioxide',
+                         'total.sulfur.dioxide', 'density', 'pH',
+                         'log10.sulphates', 'alcohol')
+correlations
+```
+
+Top 4:
+alcohol
+sulphates (log10)
+volatile acidity
+citric acid
+
+Examining the acidity variables:
+
+```{r,message=FALSE,warning=FALSE}
+ggplot(data = Wine, aes(x = fixed.acidity, y = citric.acid)) +
+  geom_point(alpha=0.3)
+
+cor.test(Wine$fixed.acidity, Wine$citric.acid)
+
+ggplot(data = Wine, aes(x = volatile.acidity, y = citric.acid)) +
+  geom_point(alpha=0.3)
+
+cor.test(Wine$volatile.acidity, Wine$citric.acid)
+
+ggplot(data = Wine, aes(x = log10(TAC.acidity), y = pH)) +
+  geom_point(alpha=0.3)
+
+cor.test(log10(Wine$TAC.acidity), Wine$pH)
+
+```
+
+Base 10 logarithm TAC.acidity correlated very well with pH.
+
+Building a predictive linear model, 
+to predict pH based off of TAC.acidity and
+capture the % difference as a new variable.
+
+```{r,message=FALSE,warning=FALSE}
+
+m <- lm(I(pH) ~ I(log10(TAC.acidity)), data = Wine)
+
+Wine$pH.predictions <- predict(m, Wine)
+
+# (observed - expected) / expected
+Wine$pH.error <- (Wine$pH.predictions - Wine$pH)/Wine$pH
+
+```
+
+To check its accuracy.
+The RMS Error.
+
+```{r,message=FALSE,warning=FALSE}
+rmse <- function(error)
+{
+    sqrt(mean(error^2))
+}
+
+rmse(m$residuals)
+#Now, we train a Support Vector Machine.
+
+require(e1071)
+
+SVM <- svm(I(pH) ~ I(log10(TAC.acidity)), data = Wine)
+
+Wine$pH.Predict.SVM <- predict(SVM,Wine)
+
+Wine$pH.error.SVM <- (Wine$pH.Predict.SVM - Wine$pH)/Wine$pH
+
+rmse(SVM$residuals)
+
+
+```
+
+SVM functions slightly better than a LM.
+
+### Plot 1: Effect of Alcohol on Wine Quality
+```{r echo=FALSE,message=FALSE,warning=FALSE}
+ggplot(data = Wine, aes(x = quality, y = alcohol,
+                      fill = rating)) +
+  geom_boxplot(outlier.color = 'red') +
+  ggtitle('Alcohol Levels in Different Wine Qualities') +
+  xlab('Quality') +
+  ylab('Alcohol (% volume)')
+
+```
+
+### Description 1
+These boxplots demonstrate the effect of alcohol content on wine quality.
+Generally, higher alcohol content correlated with higher wine quality.
+However, as the outliers and intervals show, alchol content alone did not
+produce a higher quality.
